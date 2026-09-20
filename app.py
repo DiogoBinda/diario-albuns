@@ -1,6 +1,38 @@
 import sqlite3
 import streamlit as st
 
+# --- CONFIGURAÇÃO DE SENHA ---
+SENHA_MESTRE = "Atheusts123"  # Altere aqui para a senha que quiser usar
+
+# Função para verificar a autenticação
+def check_password():
+    def password_entered():
+        if st.session_state["password"] == SENHA_MESTRE:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Não guarda a senha na sessão por segurança
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # Primeiro acesso: mostra a caixa de texto da senha
+        st.title("🔒 Diário de Álbuns - Acesso Restrito")
+        st.text_input("Introduza a senha de acesso:", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        # Senha errada
+        st.title("🔒 Diário de Álbuns - Acesso Restrito")
+        st.text_input("Introduza a senha de acesso:", type="password", on_change=password_entered, key="password")
+        st.error("😕 Senha incorreta. Tente novamente.")
+        return False
+    else:
+        # Senha correta
+        return True
+
+# Se a senha não estiver correta, para a execução aqui
+if not check_password():
+    st.stop()
+
+
 # 1. Configuração da Base de Dados SQLite
 def init_db():
     conn = sqlite3.connect("albuns.db")
@@ -23,6 +55,11 @@ init_db()
 # 2. Interface do Utilizador (Streamlit)
 st.title("🎵 O Meu Diário de Álbuns")
 st.write("Registe, avalie e edite os álbuns que ouve, com notas de 1 a 5 estrelas e comentários.")
+
+# Botão de Terminar Sessão (Logout) na barra lateral
+if st.sidebar.button("🚪 Terminar Sessão"):
+    st.session_state["password_correct"] = False
+    st.rerun()
 
 # Barra lateral para adicionar novos álbuns
 st.sidebar.header("Adicionar Novo Álbum")
@@ -72,11 +109,9 @@ else:
                 if comentario:
                     st.write(f"*{comentario}*")
             with col2:
-                # Botão para ativar a edição deste álbum específico
                 if st.button("✏️ Editar", key=f"edit_btn_{album_id}"):
                     st.session_state[f"editando_{album_id}"] = True
             with col3:
-                # Botão para apagar o álbum
                 if st.button("🗑️ Apagar", key=f"del_{album_id}"):
                     conn = sqlite3.connect("albuns.db")
                     cursor = conn.cursor()
@@ -85,7 +120,6 @@ else:
                     conn.close()
                     st.rerun()
 
-            # Se o botão de editar foi clicado, mostra o formulário de alteração para este álbum
             if st.session_state.get(f"editando_{album_id}", False):
                 with st.form(key=f"form_edit_{album_id}"):
                     st.write(f"### A editar: {titulo}")
@@ -120,3 +154,15 @@ else:
                         st.rerun()
 
             st.divider()
+
+# Botão para descarregar o backup da base de dados na barra lateral
+with st.sidebar:
+    st.divider()
+    st.subheader("📦 Cópia de Segurança")
+    with open("albuns.db", "rb") as f:
+        st.download_button(
+            label="Descarregar Base de Dados",
+            data=f,
+            file_name="albuns_backup.db",
+            mime="application/octet-stream"
+        )
