@@ -43,7 +43,8 @@ if not check_password():
 # --- APLICAÇÃO PRINCIPAL ---
 st.title("🎸 Diário de Álbuns de Metal")
 st.write(
-    "Gerencie, filtre por subgénero e classifique os seus álbuns favoritos."
+    "Gerencie, filtre por subgénero e avalie os seus álbuns favoritos de 1 a"
+    " 10."
 )
 
 # Conexão à Base de Dados SQLite
@@ -101,9 +102,9 @@ if menu == "Ver / Filtrar Álbuns":
     )
 
   with col_f2:
-    filtro_estrelas = st.selectbox(
-        "Filtrar por Classificação:",
-        ["Todas", "5 ⭐⭐⭐⭐⭐", "4 ⭐⭐⭐⭐", "3 ⭐⭐⭐", "2 ⭐⭐", "1 ⭐"],
+    filtro_nota = st.selectbox(
+        "Filtrar por Nota:",
+        ["Todas", "10", "9", "8", "7", "6", "5", "4", "3", "2", "1"],
     )
 
   query = "SELECT artista, album, categoria, nota, comentario FROM albuns WHERE 1=1"
@@ -113,10 +114,9 @@ if menu == "Ver / Filtrar Álbuns":
     query += " AND categoria = ?"
     parametros.append(filtro_cat)
 
-  if filtro_estrelas != "Todas":
-    num_estrelas = int(filtro_estrelas[0])
+  if filtro_nota != "Todas":
     query += " AND nota = ?"
-    parametros.append(num_estrelas)
+    parametros.append(int(filtro_nota))
 
   cursor.execute(query, parametros)
   dados = cursor.fetchall()
@@ -127,14 +127,12 @@ if menu == "Ver / Filtrar Álbuns":
     st.write(f"A mostrar **{len(dados)}** álbuns encontrados:")
     for artista, album, categoria, nota, comentario in dados:
       cat_texto = f"[{categoria}]" if categoria else "[Sem Categoria]"
-      # Garante que o valor máximo exibido é 5 estrelas
-      nota_limita = min(max(int(nota) if nota else 1, 1), 5)
-      estrelas = "⭐" * nota_limita
+      nota_val = nota if nota else "?"
       with st.expander(
-          f"{cat_texto} {artista} - {album}  |  {estrelas} ({nota_limita}/5)"
+          f"{cat_texto} {artista} - {album}  |  Nota: {nota_val}/10"
       ):
         st.write(f"**Subgénero:** {categoria}")
-        st.write(f"**Classificação:** {estrelas}")
+        st.write(f"**Classificação:** {nota_val}/10")
         st.write(f"**Comentário:** {comentario}")
   else:
     st.info("Nenhum álbum encontrado com os filtros selecionados.")
@@ -146,14 +144,7 @@ elif menu == "Adicionar Álbum":
     artista = st.text_input("Artista / Banda")
     album = st.text_input("Nome do Álbum")
     categoria = st.selectbox("Subgénero de Metal", subgeneros_metal)
-
-    nota_estrelas = st.select_slider(
-        "Classificação por Estrelas",
-        options=[1, 2, 3, 4, 5],
-        value=4,
-        format_func=lambda x: "⭐" * x,
-    )
-
+    nota = st.slider("Nota (1 a 10)", 1, 10, 8)
     comentario = st.text_area("Comentário / Análise")
     submit = st.form_submit_button("Guardar Álbum")
 
@@ -162,7 +153,7 @@ elif menu == "Adicionar Álbum":
         cursor.execute(
             "INSERT INTO albuns (artista, album, categoria, nota, comentario)"
             " VALUES (?, ?, ?, ?, ?)",
-            (artista, album, categoria, nota_estrelas, comentario),
+            (artista, album, categoria, nota, comentario),
         )
         conn.commit()
         st.success(f"Álbum '{album}' guardado com sucesso!")
@@ -191,8 +182,9 @@ elif menu == "Gerir / Editar":
         if cat_atual in subgeneros_metal
         else 0
     )
-    # Garante que a nota antiga se mantém entre 1 e 5
-    nota_index = min(max(int(nota_atual) if nota_atual else 3, 1), 5)
+    nota_atual_val = int(nota_atual) if nota_atual else 8
+    # Garante que a nota antiga se mantém entre 1 e 10
+    nota_index = min(max(nota_atual_val, 1), 10)
 
     with st.form("form_editar"):
       novo_artista = st.text_input("Artista / Banda", value=art_atual)
@@ -200,14 +192,7 @@ elif menu == "Gerir / Editar":
       nova_categoria = st.selectbox(
           "Subgénero de Metal", subgeneros_metal, index=cat_index
       )
-
-      nova_nota = st.select_slider(
-          "Classificação por Estrelas",
-          options=[1, 2, 3, 4, 5],
-          value=nota_index,
-          format_func=lambda x: "⭐" * x,
-      )
-
+      nova_nota = st.slider("Nota (1 a 10)", 1, 10, value=nota_index)
       novo_comentario = st.text_area(
           "Comentário / Análise", value=com_atual if com_atual else ""
       )
