@@ -1,8 +1,19 @@
-import sqlite3
 import streamlit as st
+from supabase import create_client
 
-# --- CONFIGURAÇÃO DE SEGURANÇA ---
+# --- CONFIGURAÇÃO DE SEGURANÇA E SUPABASE ---
 SENHA_MESTRE = st.secrets.get("SENHA_MESTRE", "sua_senha_padrao")
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
+
+
+# Inicializar o cliente do Supabase
+@st.cache_resource
+def init_supabase():
+  return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+supabase = init_supabase()
 
 
 # Função para verificar a autenticação
@@ -41,35 +52,11 @@ if not check_password():
   st.stop()
 
 # --- APLICAÇÃO PRINCIPAL ---
-st.title("🎸 Diário de Álbuns de Metal")
+st.title("🎸 Diário de Álbuns de Metal (Nuvem)")
 st.write(
     "Gerencie, filtre por subgénero e avalie os seus álbuns favoritos de 1 a"
-    " 10."
+    " 10 com dados guardados na nuvem."
 )
-
-# Conexão à Base de Dados SQLite
-conn = sqlite3.connect("albuns.db", check_same_thread=False)
-cursor = conn.cursor()
-
-# Criar a tabela se não existir
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS albuns (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        artista TEXT NOT NULL,
-        album TEXT NOT NULL,
-        categoria TEXT,
-        nota INTEGER,
-        comentario TEXT
-    )
-""")
-conn.commit()
-
-# Garantir compatibilidade com colunas antigas
-try:
-  cursor.execute("ALTER TABLE albuns ADD COLUMN categoria TEXT")
-  conn.commit()
-except sqlite3.OperationalError:
-  pass
 
 # Lista de subgéneros de metal
 subgeneros_metal = [
@@ -107,25 +94,29 @@ if menu == "Ver / Filtrar Álbuns":
         ["Todas", "10", "9", "8", "7", "6", "5", "4", "3", "2", "1"],
     )
 
-  query = "SELECT artista, album, categoria, nota, comentario FROM albuns WHERE 1=1"
-  parametros = []
+  # Construir consulta ao Supabase
+  query = supabase.table("albuns").select("*")
 
   if filtro_cat != "Todos":
-    query += " AND categoria = ?"
-    parametros.append(filtro_cat)
+    query = query.eq("categoria", filtro_cat)
 
   if filtro_nota != "Todas":
-    query += " AND nota = ?"
-    parametros.append(int(filtro_nota))
+    query = query.eq("nota", int(filtro_nota))
 
-  cursor.execute(query, parametros)
-  dados = cursor.fetchall()
+  response = query.execute()
+  dados = response.data
 
   st.divider()
 
   if dados:
     st.write(f"A mostrar **{len(dados)}** álbuns encontrados:")
-    for artista, album, categoria, nota, comentario in dados:
+    for item in dados:
+      artista = item.get("artista")
+      album = item.get("album")
+      categoria = item.get("categoria")
+      nota = item.get("nota")
+      comentario = item.get("comentario")
+
       cat_texto = f"[{categoria}]" if categoria else "[Sem Categoria]"
       nota_val = nota if nota else "?"
       with st.expander(
@@ -150,75 +141,82 @@ elif menu == "Adicionar Álbum":
 
     if submit:
       if artista and album:
-        cursor.execute(
-            "INSERT INTO albuns (artista, album, categoria, nota, comentario)"
-            " VALUES (?, ?, ?, ?, ?)",
-            (artista, album, categoria, nota, comentario),
-        )
-        conn.commit()
-        st.success(f"Álbum '{album}' guardado com sucesso!")
+        # Inserir no Supabase
+        supabase.table("albuns").insert({
+            "artista": artista,
+            "album": album,
+            "categoria": categoria,
+            "nota": nota,
+            "comentario": comentario,
+        }).execute()
+        st.success(f"Álbum '{album}' guardado com sucesso na nuvem!")
       else:
         st.warning("Por favor, preencha pelo menos o artista e o álbum.")
 
 elif menu == "Gerir / Editar":
   st.subheader("⚙️ Editar ou Apagar Registos")
-  cursor.execute("SELECT id, artista, album FROM albuns")
-  registos = cursor.fetchall()
+
+  response = supabase.table("albuns").select("id, artista, album").execute()
+  registos = response.data
 
   if registos:
-    opcoes = {f"{art} - {alb} (ID: {id_})": id_ for id_, art, alb in registos}
+    opcoes = {
+        f"{item['artista']} - {item['album']} (ID: {item['id']})": item["id"]
+        for item in registos
+    }
     escolha = st.selectbox("Selecione o álbum para gerir:", list(opcoes.keys()))
     id_selecionado = opcoes[escolha]
 
-    cursor.execute(
-        "SELECT artista, album, categoria, nota, comentario FROM albuns WHERE id"
-        " = ?",
-        (id_selecionado,),
+    res_detalhe = (
+        supabase.table("albuns")
+        .select("*")
+        .eq("id", id_selecionado)
+        .execute()
     )
-    art_atual, alb_atual, cat_atual, nota_atual, com_atual = cursor.fetchone()
+    if res_detalhe.data:
+      item_atual = res_detalhe.data[0]
+      art_atual = item_atual.get("artista")
+      alb_atual = item_atual.get("album")
+      cat_atual = item_atual.get("categoria")
+      nota_atual = item_atual.get("nota")
+      com_atual = item_atual.get("comentario")
 
-    cat_index = (
-        subgeneros_metal.index(cat_atual)
-        if cat_atual in subgeneros_metal
-        else 0
-    )
-    nota_atual_val = int(nota_atual) if nota_atual else 8
-    # Garante que a nota antiga se mantém entre 1 e 10
-    nota_index = min(max(nota_atual_val, 1), 10)
-
-    with st.form("form_editar"):
-      novo_artista = st.text_input("Artista / Banda", value=art_atual)
-      novo_album = st.text_input("Nome do Álbum", value=alb_atual)
-      nova_categoria = st.selectbox(
-          "Subgénero de Metal", subgeneros_metal, index=cat_index
+      cat_index = (
+          subgeneros_metal.index(cat_atual)
+          if cat_atual in subgeneros_metal
+          else 0
       )
-      nova_nota = st.slider("Nota (1 a 10)", 1, 10, value=nota_index)
-      novo_comentario = st.text_area(
-          "Comentário / Análise", value=com_atual if com_atual else ""
-      )
+      nota_atual_val = int(nota_atual) if nota_atual else 8
+      nota_index = min(max(nota_atual_val, 1), 10)
 
-      col1, col2 = st.columns(2)
-      atualizar = col1.form_submit_button("Atualizar Álbum")
-      apagar = col2.form_submit_button("Apagar Álbum")
-
-      if atualizar:
-        cursor.execute(
-            "UPDATE albuns SET artista = ?, album = ?, categoria = ?, nota = ?,"
-            " comentario = ? WHERE id = ?",
-            (
-                novo_artista,
-                novo_album,
-                nova_categoria,
-                nova_nota,
-                novo_comentario,
-                id_selecionado,
-            ),
+      with st.form("form_editar"):
+        novo_artista = st.text_input("Artista / Banda", value=art_atual)
+        novo_album = st.text_input("Nome do Álbum", value=alb_atual)
+        nova_categoria = st.selectbox(
+            "Subgénero de Metal", subgeneros_metal, index=cat_index
         )
-        conn.commit()
-        st.success("Álbum atualizado com sucesso!")
-      elif apagar:
-        cursor.execute("DELETE FROM albuns WHERE id = ?", (id_selecionado,))
-        conn.commit()
-        st.success("Álbum apagado com sucesso!")
+        nova_nota = st.slider("Nota (1 a 10)", 1, 10, value=nota_index)
+        novo_comentario = st.text_area(
+            "Comentário / Análise", value=com_atual if com_atual else ""
+        )
+
+        col1, col2 = st.columns(2)
+        atualizar = col1.form_submit_button("Atualizar Álbum")
+        apagar = col2.form_submit_button("Apagar Álbum")
+
+        if atualizar:
+          supabase.table("albuns").update({
+              "artista": novo_artista,
+              "album": novo_album,
+              "categoria": nova_categoria,
+              "nota": nova_nota,
+              "comentario": novo_comentario,
+          }).eq("id", id_selecionado).execute()
+          st.success("Álbum atualizado com sucesso na nuvem!")
+        elif apagar:
+          supabase.table("albuns").delete().eq(
+              "id", id_selecionado
+          ).execute()
+          st.success("Álbum apagado com sucesso da nuvem!")
   else:
     st.info("Não há álbuns para gerir.")
