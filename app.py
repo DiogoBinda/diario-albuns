@@ -43,7 +43,7 @@ if not check_password():
 # --- APLICAÇÃO PRINCIPAL ---
 st.title("🎸 Diário de Álbuns de Metal")
 st.write(
-    "Gerencie o seu registo pessoal de álbuns e subgéneros de metal favoritos."
+    "Gerencie, filtre por subgénero e classifique os seus álbuns favoritos."
 )
 
 # Conexão à Base de Dados SQLite
@@ -63,14 +63,14 @@ cursor.execute("""
 """)
 conn.commit()
 
-# Garantir compatibilidade caso a base de dados antiga não tenha a coluna categoria
+# Garantir compatibilidade com colunas antigas
 try:
   cursor.execute("ALTER TABLE albuns ADD COLUMN categoria TEXT")
   conn.commit()
 except sqlite3.OperationalError:
-  pass  # A coluna já existe
+  pass
 
-# Lista de subgéneros de metal para escolher
+# Lista de subgéneros de metal
 subgeneros_metal = [
     "Heavy Metal",
     "Thrash Metal",
@@ -86,38 +86,59 @@ subgeneros_metal = [
 
 # Menu lateral
 menu = st.sidebar.selectbox(
-    "Navegação", ["Ver Álbuns", "Adicionar Álbum", "Gerir / Editar"]
+    "Navegação", ["Ver / Filtrar Álbuns", "Adicionar Álbum", "Gerir / Editar"]
 )
 
-if menu == "Ver Álbuns":
-  st.subheader("📚 Meus Registos de Metal")
+if menu == "Ver / Filtrar Álbuns":
+  st.subheader("📚 Meus Registos e Filtros Avançados")
 
-  # Filtro por categoria na visualização
-  filtro_cat = st.selectbox(
-      "Filtrar por Subgénero:", ["Todos"] + subgeneros_metal
-  )
+  # Criar filtros na barra lateral ou no topo para refinar a busca
+  st.markdown("### 🔍 Filtrar Catálogo")
+  col_f1, col_f2 = st.columns(2)
 
-  if filtro_cat == "Todos":
-    cursor.execute(
-        "SELECT artista, album, categoria, nota, comentario FROM albuns"
-    )
-  else:
-    cursor.execute(
-        "SELECT artista, album, categoria, nota, comentario FROM albuns WHERE"
-        " categoria = ?",
-        (filtro_cat,),
+  with col_f1:
+    filtro_cat = st.selectbox(
+        "Filtrar por Subgénero:", ["Todos"] + subgeneros_metal
     )
 
+  with col_f2:
+    filtro_estrelas = st.selectbox(
+        "Filtrar por Classificação:",
+        ["Todas", "5 ⭐⭐⭐⭐⭐", "4 ⭐⭐⭐⭐", "3 ⭐⭐⭐", "2 ⭐⭐", "1 ⭐"],
+    )
+
+  # Construção dinâmica da query SQL com base nos filtros escolhidos
+  query = "SELECT artista, album, categoria, nota, comentario FROM albuns WHERE 1=1"
+  parametros = []
+
+  if filtro_cat != "Todos":
+    query += " AND categoria = ?"
+    parametros.append(filtro_cat)
+
+  if filtro_estrelas != "Todas":
+    # Extrai o número do primeiro caractere (ex: "5 ⭐⭐⭐⭐⭐" vira 5)
+    num_estrelas = int(filtro_estrelas[0])
+    query += " AND nota = ?"
+    parametros.append(num_estrelas)
+
+  cursor.execute(query, parametros)
   dados = cursor.fetchall()
 
+  st.divider()
+
   if dados:
+    st.write(f"A mostrar **{len(dados)}** álbuns encontrados:")
     for artista, album, categoria, nota, comentario in dados:
       cat_texto = f"[{categoria}]" if categoria else "[Sem Categoria]"
-      with st.expander(f"{cat_texto} {artista} - {album} (Nota: {nota}/10)"):
+      estrelas = "⭐" * int(nota) if nota else ""
+      with st.expander(
+          f"{cat_texto} {artista} - {album}  |  {estrelas} ({nota}/5)"
+      ):
         st.write(f"**Subgénero:** {categoria}")
+        st.write(f"**Classificação:** {estrelas}")
         st.write(f"**Comentário:** {comentario}")
   else:
-    st.info("Ainda não existem álbuns registados com este filtro.")
+    st.info("Nenhum álbum encontrado com os filtros selecionados.")
 
 elif menu == "Adicionar Álbum":
   st.subheader("➕ Adicionar Novo Álbum de Metal")
@@ -126,7 +147,14 @@ elif menu == "Adicionar Álbum":
     artista = st.text_input("Artista / Banda")
     album = st.text_input("Nome do Álbum")
     categoria = st.selectbox("Subgénero de Metal", subgeneros_metal)
-    nota = st.slider("Nota", 1, 10, 8)
+
+    nota_estrelas = st.select_slider(
+        "Classificação por Estrelas",
+        options=[1, 2, 3, 4, 5],
+        value=4,
+        format_func=lambda x: "⭐" * x,
+    )
+
     comentario = st.text_area("Comentário / Análise")
     submit = st.form_submit_button("Guardar Álbum")
 
@@ -135,7 +163,7 @@ elif menu == "Adicionar Álbum":
         cursor.execute(
             "INSERT INTO albuns (artista, album, categoria, nota, comentario)"
             " VALUES (?, ?, ?, ?, ?)",
-            (artista, album, categoria, nota, comentario),
+            (artista, album, categoria, nota_estrelas, comentario),
         )
         conn.commit()
         st.success(f"Álbum '{album}' guardado com sucesso!")
@@ -159,12 +187,12 @@ elif menu == "Gerir / Editar":
     )
     art_atual, alb_atual, cat_atual, nota_atual, com_atual = cursor.fetchone()
 
-    # Descobrir o índice atual do selectbox
     cat_index = (
         subgeneros_metal.index(cat_atual)
         if cat_atual in subgeneros_metal
         else 0
     )
+    nota_index = max(1, min(5, int(nota_atual))) if nota_atual else 3
 
     with st.form("form_editar"):
       novo_artista = st.text_input("Artista / Banda", value=art_atual)
@@ -172,7 +200,14 @@ elif menu == "Gerir / Editar":
       nova_categoria = st.selectbox(
           "Subgénero de Metal", subgeneros_metal, index=cat_index
       )
-      nova_nota = st.slider("Nota", 1, 10, value=int(nota_atual))
+
+      nova_nota = st.select_slider(
+          "Classificação por Estrelas",
+          options=[1, 2, 3, 4, 5],
+          value=nota_index,
+          format_func=lambda x: "⭐" * x,
+      )
+
       novo_comentario = st.text_area(
           "Comentário / Análise", value=com_atual if com_atual else ""
       )
