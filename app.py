@@ -92,7 +92,6 @@ menu = st.sidebar.selectbox(
 if menu == "Ver / Filtrar Álbuns":
   st.subheader("📚 Meus Registos e Filtros Avançados")
 
-  # Criar filtros na barra lateral ou no topo para refinar a busca
   st.markdown("### 🔍 Filtrar Catálogo")
   col_f1, col_f2 = st.columns(2)
 
@@ -107,7 +106,6 @@ if menu == "Ver / Filtrar Álbuns":
         ["Todas", "5 ⭐⭐⭐⭐⭐", "4 ⭐⭐⭐⭐", "3 ⭐⭐⭐", "2 ⭐⭐", "1 ⭐"],
     )
 
-  # Construção dinâmica da query SQL com base nos filtros escolhidos
   query = "SELECT artista, album, categoria, nota, comentario FROM albuns WHERE 1=1"
   parametros = []
 
@@ -116,7 +114,6 @@ if menu == "Ver / Filtrar Álbuns":
     parametros.append(filtro_cat)
 
   if filtro_estrelas != "Todas":
-    # Extrai o número do primeiro caractere (ex: "5 ⭐⭐⭐⭐⭐" vira 5)
     num_estrelas = int(filtro_estrelas[0])
     query += " AND nota = ?"
     parametros.append(num_estrelas)
@@ -130,9 +127,11 @@ if menu == "Ver / Filtrar Álbuns":
     st.write(f"A mostrar **{len(dados)}** álbuns encontrados:")
     for artista, album, categoria, nota, comentario in dados:
       cat_texto = f"[{categoria}]" if categoria else "[Sem Categoria]"
-      estrelas = "⭐" * int(nota) if nota else ""
+      # Garante que o valor máximo exibido é 5 estrelas
+      nota_limita = min(max(int(nota) if nota else 1, 1), 5)
+      estrelas = "⭐" * nota_limita
       with st.expander(
-          f"{cat_texto} {artista} - {album}  |  {estrelas} ({nota}/5)"
+          f"{cat_texto} {artista} - {album}  |  {estrelas} ({nota_limita}/5)"
       ):
         st.write(f"**Subgénero:** {categoria}")
         st.write(f"**Classificação:** {estrelas}")
@@ -192,7 +191,8 @@ elif menu == "Gerir / Editar":
         if cat_atual in subgeneros_metal
         else 0
     )
-    nota_index = max(1, min(5, int(nota_atual))) if nota_atual else 3
+    # Garante que a nota antiga se mantém entre 1 e 5
+    nota_index = min(max(int(nota_atual) if nota_atual else 3, 1), 5)
 
     with st.form("form_editar"):
       novo_artista = st.text_input("Artista / Banda", value=art_atual)
