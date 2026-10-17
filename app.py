@@ -33,14 +33,14 @@ def carregar_dados():
 
 # --- CABEÇALHO PRINCIPAL ---
 st.title("🎵 Diário de Álbuns")
-st.caption("Catálogo público de álbuns e avaliações")
+st.caption("Catálogo público de álbuns, avaliações e comentários")
 
 dados = carregar_dados()
 
 if dados:
     df = pd.DataFrame(dados)
     
-    # Exibe métricas no topo
+    # Métricas no topo
     col_m1, col_m2 = st.columns(2)
     with col_m1:
         st.metric("Total de Álbuns", len(df))
@@ -50,13 +50,30 @@ if dados:
 
     st.markdown("---")
     
-    # Exibe a tabela interativa com todos os seus dados
-    st.subheader("📚 Coleção")
+    # Exibe a coleção em tabela com ajuste de largura
+    st.subheader("📚 Coleção de Álbuns")
     st.dataframe(
         df,
         use_container_width=True,
         hide_index=True
     )
+    
+    # Visualização detalhada em cards (com comentários em destaque)
+    st.markdown("---")
+    st.subheader("💬 Resenhas e Comentários")
+    
+    for idx, album in enumerate(dados):
+        nome = album.get("nome") or album.get("titulo") or "Álbum sem título"
+        banda = album.get("banda") or album.get("artista") or "Banda não informada"
+        nota = album.get("nota", "N/A")
+        genero = album.get("genero", "")
+        comentario = album.get("comentario") or album.get("resenha") or album.get("obs") or "Sem comentários registrados."
+        
+        with st.expander(f"⭐ {nota}/10 — **{nome}** ({banda})"):
+            if genero:
+                st.caption(f"**Gênero:** {genero}")
+            st.write(f"**Comentário / Resenha:** {comentario}")
+
 else:
     st.warning("Nenhum dado encontrado na tabela. Verifique se o nome da tabela no código é o mesmo do Supabase.")
 
@@ -64,26 +81,27 @@ else:
 st.sidebar.header("⚙️ Painel de Administração")
 senha = st.sidebar.text_input("Senha para adicionar/editar:", type="password")
 
-# Coloque a sua senha aqui
-if senha == "Atheusts123":
+if senha == "Atheusts123": # Troque pela sua senha
     st.sidebar.success("Acesso autorizado!")
     st.sidebar.markdown("---")
     st.sidebar.subheader("Novo Registo")
     
     with st.sidebar.form("form_add", clear_on_submit=True):
-        col1 = st.text_input("Nome/Título do Álbum")
-        col2 = st.text_input("Banda/Artista")
-        col3 = st.text_input("Gênero/Estilo")
-        col4 = st.number_input("Nota", min_value=1.0, max_value=10.0, step=0.5, value=10.0)
+        col_nome = st.text_input("Nome/Título do Álbum")
+        col_banda = st.text_input("Banda/Artista")
+        col_genero = st.text_input("Gênero/Estilo")
+        col_nota = st.number_input("Nota", min_value=1.0, max_value=10.0, step=0.5, value=10.0)
+        col_comentario = st.text_area("Comentário / Resenha")
         
         salvar = st.form_submit_button("Salvar")
         if salvar:
-            # Ajuste as chaves abaixo para os nomes exatos das colunas no seu Supabase
+            # Ajuste o nome da chave "comentario" caso a coluna no Supabase tenha outro nome (ex: "resenha")
             novo = {
-                "nome": col1,
-                "banda": col2,
-                "genero": col3,
-                "nota": col4
+                "nome": col_nome,
+                "banda": col_banda,
+                "genero": col_genero,
+                "nota": col_nota,
+                "comentario": col_comentario
             }
             try:
                 supabase.table("albuns").insert(novo).execute()
