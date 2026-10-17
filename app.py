@@ -13,7 +13,6 @@ st.set_page_config(
 # ==========================================
 # 2. CONEXÃO COM O SUPABASE
 # ==========================================
-# Certifique-se de ter SUPABASE_URL e SUPABASE_KEY configurados em .streamlit/secrets.toml ou no Streamlit Cloud
 @st.cache_resource
 def init_supabase():
     url = st.secrets["SUPABASE_URL"]
@@ -23,7 +22,7 @@ def init_supabase():
 try:
     supabase: Client = init_supabase()
 except Exception as e:
-    st.error("Erro ao conectar ao Supabase. Verifique se o projeto está ativo e se os Secrets estão corretos.")
+    st.error(f"Erro ao conectar ao Supabase: {e}")
 
 # Função para buscar todos os álbuns da tabela
 def carregar_albuns():
@@ -39,24 +38,17 @@ def carregar_albuns():
 # ==========================================
 st.markdown("""
 <style>
-    /* Fundo da aplicação */
     .stApp {
         background-color: #0b0c10;
         color: #c5c6c7;
     }
-    
-    /* Títulos e Cabeçalhos */
     h1, h2, h3 {
-        color: #66fcf1 !important; /* Azul ciano elétrico */
+        color: #66fcf1 !important;
         font-family: 'Helvetica Neue', sans-serif;
     }
-    
-    /* Destaques */
     strong {
-        color: #ff2e63 !important; /* Vermelho/Crimson */
+        color: #ff2e63 !important;
     }
-
-    /* Estilização dos Botões */
     .stButton > button {
         background-color: #ff2e63 !important;
         color: #ffffff !important;
@@ -69,13 +61,9 @@ st.markdown("""
         background-color: #e02353 !important;
         box-shadow: 0px 0px 10px rgba(255, 46, 99, 0.6);
     }
-
-    /* Menu Lateral / Sidebar */
     section[data-testid="stSidebar"] {
         background-color: #1f2833 !important;
     }
-
-    /* Cards de exibição de cada álbum */
     .album-card {
         background-color: #1f2833;
         padding: 18px;
@@ -106,14 +94,12 @@ st.markdown("""
 st.title("🤘 Catálogo de Álbuns de Heavy Metal")
 st.write("Explore a coleção de álbuns, notas de 1 a 10 e subgêneros.")
 
-# Carregar dados do Supabase
 dados_albuns = carregar_albuns()
 
 # Filtros
 st.subheader("🔍 Filtrar Catálogo")
 col_filtro1, col_filtro2 = st.columns(2)
 
-# Obter opções únicas para os filtros
 subgeneros_disponiveis = ["Todos"] + sorted(list({a.get("genero") for a in dados_albuns if a.get("genero")})) if dados_albuns else ["Todos"]
 
 with col_filtro1:
@@ -122,7 +108,6 @@ with col_filtro1:
 with col_filtro2:
     nota_sel = st.selectbox("Filtrar por Nota:", ["Todas", "10", "9+", "8+", "7+"])
 
-# Aplicar filtragem localmente
 albuns_filtrados = dados_albuns.copy() if dados_albuns else []
 
 if subgenero_sel != "Todos":
@@ -137,7 +122,6 @@ st.markdown("---")
 st.subheader(f"📚 Álbuns Cadastrados ({len(albuns_filtrados)})")
 
 if albuns_filtrados:
-    # Exibe os álbuns em uma grade de 2 colunas
     cols = st.columns(2)
     for idx, album in enumerate(albuns_filtrados):
         col_atual = cols[idx % 2]
@@ -159,20 +143,17 @@ st.sidebar.title("⚙️ Painel de Controlo")
 st.sidebar.write("Área exclusiva do administrador.")
 
 senha_admin = st.sidebar.text_input("Senha de acesso:", type="password")
-
-# Defina a sua senha aqui ou use st.secrets["ADMIN_PASSWORD"]
 SENHA_CORRETA = "suasenha123"
 
 if senha_admin == SENHA_CORRETA:
     st.sidebar.success("Modo de Administração Ativo!")
-    
     st.sidebar.markdown("---")
     st.sidebar.subheader("➕ Adicionar Novo Álbum")
     
     with st.sidebar.form("form_novo_album", clear_on_submit=True):
         nome_input = st.text_input("Nome do Álbum")
         banda_input = st.text_input("Banda / Artista")
-        genero_input = st.text_input("Subgênero (ex: Thrash Metal, Power Metal)")
+        genero_input = st.text_input("Subgênero (ex: Thrash Metal)")
         nota_input = st.slider("Nota", min_value=1.0, max_value=10.0, value=10.0, step=0.5)
         
         btn_salvar = st.form_submit_button("Guardar no Supabase")
@@ -188,4 +169,11 @@ if senha_admin == SENHA_CORRETA:
                 try:
                     supabase.table("albuns").insert(novo_registro).execute()
                     st.sidebar.success(f"'{nome_input}' salvo com sucesso!")
-                    st
+                    st.rerun()
+                except Exception as err:
+                    st.sidebar.error(f"Erro ao salvar: {err}")
+            else:
+                st.sidebar.warning("Preencha ao menos o Nome e a Banda.")
+
+elif senha_admin:
+    st.sidebar.error("Senha incorreta.")
