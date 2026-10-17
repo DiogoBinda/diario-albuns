@@ -143,7 +143,7 @@ st.sidebar.title("⚙️ Painel de Controlo")
 st.sidebar.write("Área exclusiva do administrador.")
 
 senha_admin = st.sidebar.text_input("Senha de acesso:", type="password")
-SENHA_CORRETA = "suasenha123"
+SENHA_CORRETA = "Atheusts123"
 
 if senha_admin == SENHA_CORRETA:
     st.sidebar.success("Modo de Administração Ativo!")
